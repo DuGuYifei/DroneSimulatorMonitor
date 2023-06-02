@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<script src="https://cesium.com/downloads/cesiumjs/releases/1.105/Build/Cesium/Cesium.js"></script>
+	<link href="https://cesium.com/downloads/cesiumjs/releases/1.105/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+	<style>
+		#cesiumContainer {
+			height: 99vh;
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+		}
+
+		#fixed-image {
+			position: fixed;
+			bottom: 40px;
+			right: 15px;
+			width: 200px;
+		}
+
+		#fixed-image2 {
+			position: fixed;
+			bottom: 40px;
+			right: 225px;
+			width: 200px;
+		}
+
+		#btn {
+			position: fixed;
+			top: 10px;
+			left: 10px;
+		}
+
+		#btn2 {
+			position: fixed;
+			top: 10px;
+			left: 100px;
+		}
+	</style>
+	<script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+	<div id="cesiumContainer"></div>
+	<img id="fixed-image" src="/camera.png" alt="camerea Image">
+	<img id="fixed-image2" src="/camera2.png" alt="camerea2 Image">
+	<button id="btn" onclick="FollowView()">Follow View</button>
+	<button id="btn2" onclick="TileView()">3D Tiles</button>
+	<script>
+		let isFollow = false;
+		const FollowView = () => {
+			isFollow = !isFollow;
+		}
+		let isTile = true;
+		const TileView = () => {
+			isTile = !isTile;
+			if (isTile) {
+				tileset = new Cesium.Cesium3DTileset({
+					url: "https://tile.googleapis.com/v1/3dtiles/root.json?key=AIzaSyDm4spDMivDRFTKo_0cx5kZLyytJgB_Z1s",
+					showCreditsOnScreen: true
+				});
+				viewer.scene.globe.show = false;
+				viewer.scene.primitives.add(tileset);
+			} else {
+				viewer.scene.globe.show = true;
+				viewer.scene.primitives.remove(tileset);
+			}
+		}
+		class Drone {
+			constructor(viewer) {
+				this.viewer = viewer;
+				this.entity = undefined;
+				this.spotLightCamera = null;
+				this.primitivesone = null;
+				this.primitivestwo = null;
+				//this.cameraRectangleEntity = null;
+				//this.cameraMaterial = null;
+				//this.cameraRectangle = null;
+				//this.prevCameraRectangleEntity = null;
+				//this.initCameraQuaternion = Cesium.Quaternion.fromHeadingPitchRoll(Cesium.HeadingPitchRoll.fromDegrees(0, -90, 0));
+				//this.cameraRotateQuaternion = Cesium.Quaternion.fromHeadingPitchRoll(Cesium.HeadingPitchRoll.fromDegrees(0, -90, 0));
+			}
+			RemovePrimitives() {
+				if (this.primitivesone) {
+					this.primitivesone.destroy();
+					this.primitivestwo.destroy();
+					Cesium.destroyObject(this.spotLightCamera);
+					this.spotLightCamera = null;
+					//Cesium.destroyObject(this.cameraRectangleEntity);
+				}
+			}
+			setMaterialFromCache() {
+				Cesium.Resource.fetchImage(link).then(function (image) {
+					this.cameraMaterial.image = link;
+				});
+			}
+			AddPrimitives(lon, lat, alt, yaw) {
+				this.spotLightCamera = new Cesium.Camera(this.viewer.scene);
+				let spotLightCamera = this.spotLightCamera;
+				spotLightCamera.frustum.aspectRatio = 1;
+
+				// let initialOrientation = Cesium.Quaternion.multiply(this.initCameraQuaternion, Cesium.Quaternion.fromHeadingPitchRoll(yaw, roll, pitch), new Cesium.Quaternion());
+				// let rotatedOrientation = new Cesium.Quaternion();
+				// Cesium.Quaternion.multiply(initialOrientation, this.cameraRotateQuaternion, rotatedOrientation);
+				spotLightCamera.setView({
+					destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+					//orientation: Cesium.HeadingPitchRoll.fromQuaternion(rotatedOrientation, new Cesium.HeadingPitchRoll())
+					orientation: {
+						heading: Cesium.Math.toRadians(yaw),
+						pitch: Cesium.Math.toRadians(-90),
+						roll: Cesium.Math.toRadians(0)
+					}
+				});
+
+				let scratchRight = new Cesium.Cartesian3();
+				let scratchRotation = new Cesium.Matrix3();
+				var scratchOrientation = new Cesium.Quaternion();
+
+				let position = spotLightCamera.positionWC;
+				let directions = spotLightCamera.directionWC;
+				let up = spotLightCamera.upWC;
+				let right = spotLightCamera.rightWC;
+				right = Cesium.Cartesian3.negate(right, scratchRight);
+
+				let rotation = scratchRotation;
+				Cesium.Matrix3.setColumn(rotation, 0, right, rotation);
+				Cesium.Matrix3.setColumn(rotation, 1, up, rotation);
+				Cesium.Matrix3.setColumn(rotation, 2, directions, rotation);
+
+				let orientation = Cesium.Quaternion.fromRotationMatrix(rotation, scratchOrientation);
+				spotLightCamera.frustum.near = 0.1;
+				spotLightCamera.frustum.far = alt - 38.8;
+
+				let instance = new Cesium.GeometryInstance({
+					geometry: new Cesium.FrustumGeometry({
+						frustum: spotLightCamera.frustum,
+						origin: position,
+						orientation: orientation
+					}),
+					material: Cesium.Color.RED.withAlpha(1),
+					attributes: {
+						color: Cesium.ColorGeometryInstanceAttribute.fromColor(new Cesium.Color(1.0, 1.0, 0.0, 0.5)),
+						show: new Cesium.ShowGeometryInstanceAttribute(true)
+					}
+				});
+
+				let instanceOutline = new Cesium.GeometryInstance({
+					geometry: new Cesium.FrustumOutlineGeometry({
+						frustum: spotLightCamera.frustum,
+						origin: position,
+						orientation: orientation
+					}),
+					material: Cesium.Color.RED.withAlpha(0.1),
+					attributes: {
+						color: Cesium.ColorGeometryInstanceAttribute.fromColor(new Cesium.Color(1.0, 0.0, 0.0, 1)),
+						show: new Cesium.ShowGeometryInstanceAttribute(true)
+					}
+				});
+
+
+				this.primitivesone = this.viewer.scene.primitives.add(new Cesium.Primitive({
+					geometryInstances: instance,
+					appearance: new Cesium.PerInstanceColorAppearance({
+						translucent: true,
+						flat: true
+					}),
+					asynchronous: false
+				}));
+
+				this.primitivestwo = this.viewer.scene.primitives.add(new Cesium.Primitive({
+					geometryInstances: instanceOutline,
+					appearance: new Cesium.PerInstanceColorAppearance({
+						translucent: true,
+						flat: true
+					}),
+					asynchronous: false
+				}));
+			}
+			InitDrone(lon, lat, alt) {
+				this.entity = this.viewer.entities.add({
+					position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+					// orientation: new Cesium.VelocityOrientationProperty(position),
+					model: {
+						uri: "./drone.glb",
+						minimumPixelSize: 64,
+						maximumSize: 128,
+						maximumScale: 1,
+						show: true,
+						// silhouette 轮廓
+						silhouetteColor: Cesium.Color.WHITE,
+						debugWireframe: false,
+						debugShowBoundingVolume: false,
+
+						scale: 0.02,
+						runAnimations: true
+					},
+				});
+				this.AddPrimitives(lon, lat, alt, 0, 0, 0);
+
+				// this.spotLightCamera = new Cesium.Camera(this.viewer.scene);
+				// let spotLightCamera = this.spotLightCamera;
+				// spotLightCamera.frustum.aspectRatio = 1;
+				// spotLightCamera.setView({
+				// 	destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt - 38.8),
+				// 	orientation: {
+				// 		heading: Cesium.Math.toRadians(0),
+				// 		pitch: Cesium.Math.toRadians(-90),
+				// 		roll: Cesium.Math.toRadians(0)
+				// 	}
+				// });
+				// this.cameraRectangle = spotLightCamera.computeViewRectangle(this.viewer.scene.globe.ellipsoid, new Cesium.Rectangle());
+				// Cesium.destroyObject(spotLightCamera);
+				// this.cameraMaterial = new Cesium.ImageMaterialProperty({
+				// 	image: './camera.png?' + new Date().getTime()
+				// });
+
+				// this.cameraRectangleEntity = this.viewer.entities.add({
+				// 	rectangle: {
+				// 		coordinates: this.cameraRectangle,
+				// 		//material: Cesium.Color.RED.withAlpha(0.8),
+				// 		material: this.cameraMaterial,
+				// 	}
+				// });
+
+			}
+
+			UpdateDrone(poseJson) {
+				const position = Cesium.Cartesian3.fromDegrees(poseJson.lon, poseJson.lat, poseJson.alt);
+				const orientation = Cesium.Transforms.headingPitchRollQuaternion(this.entity.position.getValue(), Cesium.HeadingPitchRoll.fromDegrees(poseJson.yaw, poseJson.pitch, poseJson.roll));
+				//const orientation = Cesium.Quaternion.fromHeadingPitchRoll(poseJson.yaw, poseJson.pitch, poseJson.roll);
+				this.entity.position = position;
+				this.entity.orientation = orientation;
+				if (isFollow) {
+					this.viewer.scene.camera.flyTo({
+						destination: Cesium.Cartesian3.fromDegrees(poseJson.lon, poseJson.lat, poseJson.alt + 100),
+						duration: 0
+					});
+				}
+				this.RemovePrimitives();
+				this.AddPrimitives(poseJson.lon, poseJson.lat, poseJson.alt, poseJson.yaw, poseJson.pitch, poseJson.roll);
+				// let spotLightCamera = new Cesium.Camera(this.viewer.scene);
+				// spotLightCamera.frustum.aspectRatio = 1;
+				// spotLightCamera.setView({
+				// 	destination: Cesium.Cartesian3.fromDegrees(poseJson.lon, poseJson.lat, poseJson.alt - 38.8),
+				// 	orientation: {
+				// 		heading: Cesium.Math.toRadians(poseJson.yaw),
+				// 		pitch: Cesium.Math.toRadians(-90),
+				// 		roll: Cesium.Math.toRadians(0)
+				// 	}
+				// });
+				// this.cameraRectangle = spotLightCamera.computeViewRectangle(this.viewer.scene.globe.ellipsoid, this.cameraRectangle);
+				// Cesium.destroyObject(spotLightCamera);
+				// //this.prevCameraRectangleEntity = this.cameraRectangleEntity;
+				// // this.cameraRectangleEntity = this.viewer.entities.add({
+				// // 	rectangle: {
+				// // 		coordinates: this.cameraRectangle,
+				// // 		//material: Cesium.Color.RED.withAlpha(0.8),
+				// // 		material: new Cesium.ImageMaterialProperty({image: link}),
+				// // 	}
+				// // });
+				// //this.viewer.entities.remove(this.prevCameraRectangleEntity);
+				// // this.cameraRectangleEntity.orientation = {
+				// // 		heading: Cesium.Math.toRadians(poseJson.yaw),
+				// // 		pitch: Cesium.Math.toRadians(0),
+				// // 		roll: Cesium.Math.toRadians(0)
+				// // 	}
+				// this.cameraRectangleEntity.rectangle.coordinates = this.cameraRectangle;
+				// this.setMaterialFromCache();
+				// //this.cameraMaterial.image = link;
+			}
+		}
+
+		Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI5MGQ2OTJhMC03YWE2LTRmOTUtYTVlYi00ZjY4NDc0ZGJlMmUiLCJpZCI6MTM2NDI5LCJpYXQiOjE2ODMwNDEzODN9.3YI8O2Ge5iwFFfRuMV0QqWAPvOdKvdWxH9Zh6capQ1I";
+		let viewer = new Cesium.Viewer("cesiumContainer", {
+			terrainProvider: Cesium.createWorldTerrain(),
+			timeline: false,
+			animation: false
+		});
+		viewer._cesiumWidget._creditContainer.style.display = "none";
+
+		let tileset = new Cesium.Cesium3DTileset({
+			url: "https://tile.googleapis.com/v1/3dtiles/root.json?key=AIzaSyDm4spDMivDRFTKo_0cx5kZLyytJgB_Z1s",
+			showCreditsOnScreen: true
+		});
+		const tiles = viewer.scene.primitives.add(tileset);
+
+		//viewer.scene.globe.show = false;
+
+		let drone = new Drone(viewer);
+		let initLon = 18.613;
+		let initLat = 54.37157;
+		let initAlt = 39.0;
+		drone.InitDrone(initLon, initLat, initAlt + 50);
+		viewer.camera.flyTo({
+			destination: Cesium.Cartesian3.fromDegrees(initLon, initLat, initAlt + 100),
+			duration: 5
+		});
+
+		const socket = io();
+		socket.on('udpData', (data) => {
+			//console.log('Received UDP JSON data:', data);
+			drone.UpdateDrone(data);
+		});
+
+		let link = '/camera.png?' + new Date().getTime();
+		let image = document.getElementById("fixed-image");
+		socket.on('udpImgData', (data) => {
+			//console.log('Received UDP image data:', data);
+			link = '/camera.png?' + new Date().getTime();
+			image.src = link;
+			//drone.cameraMaterial = new Cesium.ImageMaterialProperty({image: link});
+		})
+
+		let image2 = document.getElementById("fixed-image2");
+		socket.on('udpImgData2', (data) => {
+			//console.log('Received UDP image data:', data);
+			image2.src = '/camera2.png?' + new Date().getTime();
+		})
+
+
+	</script>
+</body>
+
+</html>
