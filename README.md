@@ -26,6 +26,13 @@ Project structure:
 6. In client, click `follow view` will follow the move or freely move the camera.
 7. In client, click `google map` will show / hide the 3d tiles.
 
+### Keyboard or Gamepad
+1. `wasd` or `left stick` move forward/back or left/right.
+2. `arrow key` or `right stick` move up/down or rotate in yaw.
+3. `k` in keyboard / `x` in PS4 / `A` in XBOX take off
+4. `l` in keyboard / `x` in PS4 / `A` in XBOX land
+5. `esc` / `left spcial key` in game pad quit game.
+
 ## Other Information
 1. `stick_controller.py` is used for PS4 controller, but I have no time to fix bug in it.
 2. `Google tile map api` will be deprecated by me in the future, so if you want to use it in the future, you need rebuild the project.
